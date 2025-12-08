@@ -171,6 +171,20 @@
                 });
             };
         }
+    function exportarCSV() {
+        const dados = [];
+        // código para pegar todos registros e converter para CSV
+        const csv = 'Cliente,Data,Cor,Quantidade
+' + dados.map(r => 
+        `${r.cliente},"${r.dataManipulacao}",${r.nomeCor},${r.quantidade}`).join('
+');
+        const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'manipulacoes-tintas.csv';
+    a.click();
+}
     </script>
 </body>
 </html>
