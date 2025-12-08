@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciamento de Tintas</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        input, select, textarea { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #f2f2f2; }
+        .delete-btn { background: #f44336; }
+        .edit-btn { background: #2196F3; margin-right: 5px; }
+        .section { margin-bottom: 20px; }
+        h2 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>Sistema de Manipulação de Tintas</h1>
+    
+    <form id="manipulacaoForm">
+        <h2>Dados do Cliente</h2>
+        <input type="text" id="cliente" placeholder="Nome do Cliente" required>
+        <input type="text" id="produtoCliente" placeholder="Produto" required>
+        <input type="text" id="endereco" placeholder="Endereço" required>
+        <input type="date" id="dataManipulacao" required>
+        
+        <h2>Detalhes da Manipulação</h2>
+        <input type="text" id="grupo" placeholder="Grupo">
+        <input type="text" id="nomeCor" placeholder="Nome da Cor (Código)">
+        <input type="text" id="produtoManip" placeholder="Produto">
+        <input type="text" id="embalagem" placeholder="Embalagem">
+        <input type="text" id="baseUsada" placeholder="Base Usada">
+        <input type="number" id="quantidade" placeholder="Quantidade" required>
+        
+        <h2>Observações</h2>
+        <textarea id="observacao" placeholder="Observações"></textarea>
+        
+        <button type="submit">Salvar Manipulação</button>
+        <button type="button" onclick="editarManipulacao(null)">Novo</button>
+    </form>
+    
+    <table id="tabelaManipulacoes">
+        <thead>
+            <tr>
+                <th>Cliente</th><th>Data</th><th>Cor</th><th>Quantidade</th><th>Ações</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        let db;
+        const DB_NAME = 'TintasDB';
+        const DB_VERSION = 1;
+        let editId = null;
+
+        // Inicializar IndexedDB
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onerror = () => console.error('Erro ao abrir DB');
+        request.onsuccess = (event) => {
+            db = event.target.result;
+            carregarTabela();
+        };
+        request.onupgradeneeded = (event) => {
+            db = event.target.result;
+            const store = db.createObjectStore('manipulacoes', { keyPath: 'id', autoIncrement: true });
+            store.createIndex('cliente', 'cliente', { unique: false });
+        };
+
+        // Salvar ou atualizar
+        document.getElementById('manipulacaoForm').onsubmit = (e) => {
+            e.preventDefault();
+            const manipulacao = {
+                cliente: document.getElementById('cliente').value,
+                produtoCliente: document.getElementById('produtoCliente').value,
+                endereco: document.getElementById('endereco').value,
+                dataManipulacao: document.getElementById('dataManipulacao').value,
+                grupo: document.getElementById('grupo').value,
+                nomeCor: document.getElementById('nomeCor').value,
+                produtoManip: document.getElementById('produtoManip').value,
+                embalagem: document.getElementById('embalagem').value,
+                baseUsada: document.getElementById('baseUsada').value,
+                quantidade: parseFloat(document.getElementById('quantidade').value),
+                observacao: document.getElementById('observacao').value,
+                dataCadastro: new Date().toISOString()
+            };
+
+            const transaction = db.transaction(['manipulacoes'], 'readwrite');
+            const store = transaction.objectStore('manipulacoes');
+
+            if (editId) {
+                manipulacao.id = editId;
+                store.put(manipulacao);
+            } else {
+                store.add(manipulacao);
+            }
+
+            transaction.oncomplete = () => {
+                limparForm();
+                carregarTabela();
+                editId = null;
+            };
+        };
+
+        function limparForm() {
+            document.getElementById('manipulacaoForm').reset();
+        }
+
+        function editarManipulacao(id) {
+            if (!id) {
+                limparForm();
+                editId = null;
+                return;
+            }
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            const store = transaction.objectStore('manipulacoes');
+            const request = store.get(id);
+            request.onsuccess = () => {
+                const data = request.result;
+                if (data) {
+                    document.getElementById('cliente').value = data.cliente;
+                    document.getElementById('produtoCliente').value = data.produtoCliente;
+                    document.getElementById('endereco').value = data.endereco;
+                    document.getElementById('dataManipulacao').value = data.dataManipulacao;
+                    document.getElementById('grupo').value = data.grupo;
+                    document.getElementById('nomeCor').value = data.nomeCor;
+                    document.getElementById('produtoManip').value = data.produtoManip;
+                    document.getElementById('embalagem').value = data.embalagem;
+                    document.getElementById('baseUsada').value = data.baseUsada;
+                    document.getElementById('quantidade').value = data.quantidade;
+                    document.getElementById('observacao').value = data.observacao;
+                    editId = id;
+                }
+            };
+        }
+
+        function excluirManipulacao(id) {
+            if (confirm('Confirmar exclusão?')) {
+                const transaction = db.transaction(['manipulacoes'], 'readwrite');
+                const store = transaction.objectStore('manipulacoes');
+                store.delete(id);
+                transaction.oncomplete = carregarTabela;
+            }
+        }
+
+        function carregarTabela() {
+            const tbody = document.querySelector('#tabelaManipulacoes tbody');
+            tbody.innerHTML = '';
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            const store = transaction.objectStore('manipulacoes');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                request.result.forEach(manip => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${manip.cliente}</td>
+                        <td>${manip.dataManipulacao}</td>
+                        <td>${manip.nomeCor}</td>
+                        <td>${manip.quantidade}</td>
+                        <td>
+                            <button class="edit-btn" onclick="editarManipulacao(${manip.id})">Editar</button>
+                            <button class="delete-btn" onclick="excluirManipulacao(${manip.id})">Excluir</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            };
+        }
+    </script>
+</body>
+</html>
