@@ -3,24 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <title>Gerenciamento de Tintas</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
         form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         input, select, textarea { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; }
-        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 2px; }
         button:hover { background: #45a049; }
+        .btn-secondary { background: #2196F3; }
+        .btn-danger { background: #f44336; }
+        .btn-warning { background: #ff9800; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background: #f2f2f2; }
-        .delete-btn { background: #f44336; }
-        .edit-btn { background: #2196F3; margin-right: 5px; }
         .section { margin-bottom: 20px; }
         h2 { color: #333; }
+        #pesquisa { border: 2px solid #ddd; border-radius: 4px; font-size: 16px; width: 70%; padding: 10px; }
+        #pesquisa:focus { border-color: #4CAF50; outline: none; }
     </style>
 </head>
 <body>
-    <h1>Sistema de Manipulação de Tintas</h1>
+    <h1>🖌️ Sistema de Manipulação de Tintas</h1>
     
     <form id="manipulacaoForm">
         <h2>Dados do Cliente</h2>
@@ -35,45 +40,55 @@
         <input type="text" id="produtoManip" placeholder="Produto">
         <input type="text" id="embalagem" placeholder="Embalagem">
         <input type="text" id="baseUsada" placeholder="Base Usada">
-        <input type="number" id="quantidade" placeholder="Quantidade" required>
+        <input type="number" id="quantidade" placeholder="Quantidade" step="0.01" required>
         
         <h2>Observações</h2>
         <textarea id="observacao" placeholder="Observações"></textarea>
         
-        <button type="submit">Salvar Manipulação</button>
-        <button type="button" onclick="editarManipulacao(null)">Novo</button>
-        <button onclick="exportarCSV()">Exportar CSV</button>
+        <div>
+            <button type="submit">💾 Salvar</button>
+            <button type="button" class="btn-secondary" onclick="editarManipulacao(null)">🆕 Novo</button>
+        </div>
     </form>
-    
+
+    <div class="section">
+        <input type="text" id="pesquisa" placeholder="🔍 Pesquisar Cliente, Cor, Data ou Grupo..." onkeyup="pesquisarDados()">
+        <button class="btn-warning" onclick="limparPesquisa()">Limpar</button>
+    </div>
+
+    <div class="section">
+        <button onclick="exportarCSVFormatado()">📊 CSV</button>
+        <button onclick="exportarExcel()">📈 Excel</button>
+        <button onclick="exportarPDF()">📄 PDF</button>
+        <button class="btn-secondary" onclick="verificarDados()">ℹ️ Total Registros</button>
+    </div>
+
     <table id="tabelaManipulacoes">
         <thead>
             <tr>
-                <th>Cliente</th><th>Data</th><th>Cor</th><th>Quantidade</th><th>Ações</th>
+                <th>Cliente</th><th>Data</th><th>Cor</th><th>Qtd</th><th>Ações</th>
             </tr>
         </thead>
         <tbody></tbody>
     </table>
 
     <script>
-        let db;
-        const DB_NAME = 'TintasDB';
-        const DB_VERSION = 1;
+        let db, todosOsDados = [];
+        const DB_NAME = 'TintasDB', DB_VERSION = 1;
         let editId = null;
 
         // Inicializar IndexedDB
         const request = indexedDB.open(DB_NAME, DB_VERSION);
         request.onerror = () => console.error('Erro ao abrir DB');
-        request.onsuccess = (event) => {
-            db = event.target.result;
-            carregarTabela();
-        };
+        request.onsuccess = (event) => { db = event.target.result; carregarTabela(); };
         request.onupgradeneeded = (event) => {
             db = event.target.result;
             const store = db.createObjectStore('manipulacoes', { keyPath: 'id', autoIncrement: true });
             store.createIndex('cliente', 'cliente', { unique: false });
+            store.createIndex('nomeCor', 'nomeCor', { unique: false });
         };
 
-        // Salvar ou atualizar
+        // CRUD
         document.getElementById('manipulacaoForm').onsubmit = (e) => {
             e.preventDefault();
             const manipulacao = {
@@ -93,48 +108,26 @@
 
             const transaction = db.transaction(['manipulacoes'], 'readwrite');
             const store = transaction.objectStore('manipulacoes');
+            if (editId) { manipulacao.id = editId; store.put(manipulacao); } 
+            else { store.add(manipulacao); }
 
-            if (editId) {
-                manipulacao.id = editId;
-                store.put(manipulacao);
-            } else {
-                store.add(manipulacao);
-            }
-
-            transaction.oncomplete = () => {
-                limparForm();
-                carregarTabela();
-                editId = null;
-            };
+            transaction.oncomplete = () => { limparForm(); carregarTabela(); editId = null; };
         };
 
-        function limparForm() {
-            document.getElementById('manipulacaoForm').reset();
-        }
+        function limparForm() { document.getElementById('manipulacaoForm').reset(); }
 
         function editarManipulacao(id) {
-            if (!id) {
-                limparForm();
-                editId = null;
-                return;
-            }
+            if (!id) { limparForm(); editId = null; return; }
             const transaction = db.transaction(['manipulacoes'], 'readonly');
             const store = transaction.objectStore('manipulacoes');
             const request = store.get(id);
             request.onsuccess = () => {
                 const data = request.result;
                 if (data) {
-                    document.getElementById('cliente').value = data.cliente;
-                    document.getElementById('produtoCliente').value = data.produtoCliente;
-                    document.getElementById('endereco').value = data.endereco;
-                    document.getElementById('dataManipulacao').value = data.dataManipulacao;
-                    document.getElementById('grupo').value = data.grupo;
-                    document.getElementById('nomeCor').value = data.nomeCor;
-                    document.getElementById('produtoManip').value = data.produtoManip;
-                    document.getElementById('embalagem').value = data.embalagem;
-                    document.getElementById('baseUsada').value = data.baseUsada;
-                    document.getElementById('quantidade').value = data.quantidade;
-                    document.getElementById('observacao').value = data.observacao;
+                    Object.keys(data).forEach(key => {
+                        const el = document.getElementById(key);
+                        if (el) el.value = data[key] || '';
+                    });
                     editId = id;
                 }
             };
@@ -143,49 +136,181 @@
         function excluirManipulacao(id) {
             if (confirm('Confirmar exclusão?')) {
                 const transaction = db.transaction(['manipulacoes'], 'readwrite');
-                const store = transaction.objectStore('manipulacoes');
-                store.delete(id);
+                transaction.objectStore('manipulacoes').delete(id);
                 transaction.oncomplete = carregarTabela;
             }
         }
 
-        function carregarTabela() {
+        // Tabela e Pesquisa
+        function carregarTabela(filtro = '') {
             const tbody = document.querySelector('#tabelaManipulacoes tbody');
             tbody.innerHTML = '';
             const transaction = db.transaction(['manipulacoes'], 'readonly');
             const store = transaction.objectStore('manipulacoes');
             const request = store.getAll();
+            
             request.onsuccess = () => {
-                request.result.forEach(manip => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${manip.cliente}</td>
-                        <td>${manip.dataManipulacao}</td>
-                        <td>${manip.nomeCor}</td>
-                        <td>${manip.quantidade}</td>
-                        <td>
-                            <button class="edit-btn" onclick="editarManipulacao(${manip.id})">Editar</button>
-                            <button class="delete-btn" onclick="excluirManipulacao(${manip.id})">Excluir</button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                todosOsDados = request.result;
+                let dadosFiltrados = todosOsDados;
+                if (filtro) {
+                    dadosFiltrados = todosOsDados.filter(manip => 
+                        manipulacaoFiltrada(manip, filtro.toLowerCase())
+                    );
+                }
+                dadosFiltrados.forEach(manip => criarLinhaTabela(manip));
             };
         }
-    function exportarCSV() {
-        const dados = [];
-        // código para pegar todos registros e converter para CSV
-        const csv = 'Cliente,Data,Cor,Quantidade
-' + dados.map(r => 
-        `${r.cliente},"${r.dataManipulacao}",${r.nomeCor},${r.quantidade}`).join('
-');
-        const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'manipulacoes-tintas.csv';
-    a.click();
+
+        function manipulacaoFiltrada(manip, termo) {
+            return manip.cliente?.toLowerCase().includes(termo) ||  // ✅ CORRIGIDO: manip ao invés de manipulacao
+            manip.nomeCor?.toLowerCase().includes(termo) ||         // ✅ CORRIGIDO
+            manip.dataManipulacao?.includes(termo) ||               // ✅ CORRIGIDO
+            manip.grupo?.toLowerCase().includes(termo) ||           // ✅ CORRIGIDO
+            manip.produtoCliente?.toLowerCase().includes(termo);    // ✅ CORRIGIDO
 }
+
+
+        function pesquisarDados() {
+            const termo = document.getElementById('pesquisa').value;
+            carregarTabela(termo);
+        }
+
+        function limparPesquisa() {
+            document.getElementById('pesquisa').value = '';
+            carregarTabela();
+        }
+
+        function criarLinhaTabela(manip) {
+            const tbody = document.querySelector('#tabelaManipulacoes tbody');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${manip.cliente}</td>
+                <td>${formatarDataBR(manip.dataManipulacao)}</td>
+                <td>${manip.nomeCor || '-'}</td>
+                <td>${manip.quantidade}</td>
+                <td>
+                    <button class="btn-secondary" onclick="mostrarDetalhes(${manip.id})">Detalhes</button>
+                    <button class="btn-secondary" onclick="editarManipulacao(${manip.id})">Editar</button>
+                    <button class="btn-danger" onclick="excluirManipulacao(${manip.id})">Excluir</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function mostrarDetalhes(id) {
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            const store = transaction.objectStore('manipulacoes');
+            const request = store.get(id);
+
+            request.onsuccess = () => {
+                const d = request.result;
+                if (!d) return;
+
+                const texto =
+                    `Cliente: ${d.cliente}\n` +
+                    `Produto (cliente): ${d.produtoCliente}\n` +
+                    `Endereço: ${d.endereco}\n` +
+                    `Data: ${d.dataManipulacao}\n\n` +
+                    `Grupo: ${d.grupo}\n` +
+                    `Nome da cor: ${d.nomeCor}\n` +
+                    `Produto (manipulação): ${d.produtoManip}\n` +
+                    `Embalagem: ${d.embalagem}\n` +
+                    `Base usada: ${d.baseUsada}\n` +
+                    `Quantidade: ${d.quantidade}\n\n` +
+                    `Observação:\n${d.observacao || ''}`;
+
+                alert(texto);
+            };
+        }
+
+
+        // Exportações
+        function exportarCSVFormatado() {
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            const store = transaction.objectStore('manipulacoes');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const dados = request.result.map(r => ({
+                    Cliente: r.cliente, Produto: r.produtoCliente, Endereço: r.endereco,
+                    Data: r.dataManipulacao, Grupo: r.grupo || '', 'Nome da Cor': r.nomeCor,
+                    Embalagem: r.embalagem || '', 'Base Usada': r.baseUsada || '',
+                    Quantidade: r.quantidade, Observação: r.observacao || ''
+                }));
+                const csv = [
+                    ['RELATÓRIO DE MANIPULAÇÕES DE TINTAS', '', `Gerado: ${new Date().toLocaleDateString('pt-BR')}`],
+                    ['', '', `Total: ${dados.length} registros`],
+                    Object.keys(dados[0] || {}),
+                    ...dados.map(d => Object.values(d))
+                ].map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
+                
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `manipulacoes-tintas_${new Date().toISOString().split('T')[0]}.csv`;
+                link.click();
+            };
+        }
+
+        function exportarExcel() {
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            const store = transaction.objectStore('manipulacoes');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const dados = request.result.map(r => ({
+                    Cliente: r.cliente, Produto: r.produtoCliente, Endereço: r.endereco,
+                    Data: r.dataManipulacao, Grupo: r.grupo || '', 'Nome da Cor': r.nomeCor,
+                    Embalagem: r.embalagem || '', 'Base Usada': r.baseUsada || '',
+                    Quantidade: r.quantidade, Observação: r.observacao || ''
+                }));
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.json_to_sheet(dados);
+                ws['!cols'] = [{wch:20},{wch:15},{wch:25},{wch:12},{wch:12},{wch:18},{wch:12},{wch:12},{wch:10},{wch:30}];
+                XLSX.utils.book_append_sheet(wb, ws, 'Manipulações');
+                XLSX.writeFile(wb, `manipulacoes-tintas_${new Date().toISOString().split('T')[0]}.xlsx`);
+            };
+        }
+
+        function exportarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(20);
+            doc.text('Relatório de Manipulações de Tintas', 20, 20);
+            doc.setFontSize(12);
+            doc.text(`Gerado: ${new Date().toLocaleDateString('pt-BR')}`, 20, 35);
+            
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            const store = transaction.objectStore('manipulacoes');
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const registros = request.result;
+                let y = 50;
+                doc.setFontSize(10);
+                doc.text('Cliente | Data | Cor | Qtd | Endereço | Observação', 20, y);
+                y += 10;
+                
+                registros.forEach((manip) => {
+                    if (y > 270) { doc.addPage(); y = 20; }
+                    const linha = `${manip.cliente?.substring(0,15) || ''} | ${manip.dataManipulacao} | ${manip.nomeCor || ''} | ${manip.quantidade} | ${manip.endereco?.substring(0,20) || ''} | ${manip.observacao?.substring(0,25) || ''}`;
+                    doc.text(linha, 20, y);
+                    y += 7;
+                });
+                doc.save('manipulacoes-tintas.pdf');
+            };
+        }
+
+        function verificarDados() {
+            const transaction = db.transaction(['manipulacoes'], 'readonly');
+            transaction.objectStore('manipulacoes').count().onsuccess = (e) => 
+                alert(`📊 Total de registros: ${e.target.result}`);
+        }
+
+        // Função auxiliar para formatar data
+        function formatarDataBR(iso) {
+            if (!iso) return '';
+            const [ano, mes, dia] = iso.split('-'); // "2025-12-09"
+            return `${dia}/${mes}/${ano}`;          // "09/12/2025"
+        }
+
     </script>
 </body>
 </html>
