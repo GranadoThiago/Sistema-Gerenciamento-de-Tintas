@@ -48,17 +48,27 @@ module.exports = async (req, res) => {
       );
     `;
 
+    // Trava de segurança: se já existe algum administrador, este endpoint
+    // não cria mais nenhum outro, mesmo que o SETUP_SECRET vaze depois.
+    // A partir daí, novos usuários só podem ser criados pela tela /usuarios.html,
+    // já autenticada e restrita a quem já é admin.
+    const jaTemAdmin = await sql`SELECT id FROM usuarios WHERE role = 'admin' LIMIT 1`;
+    if (jaTemAdmin.rows.length > 0) {
+      return res.status(200).json({
+        ok: true,
+        mensagem: 'Tabelas já existiam e já há um administrador cadastrado. Nenhum novo admin foi criado por este endpoint — use a tela de gestão de usuários.',
+        adminCriado: false
+      });
+    }
+
     let adminCriado = false;
     if (nome && email && senha) {
-      const existente = await sql`SELECT id FROM usuarios WHERE email = ${email}`;
-      if (existente.rows.length === 0) {
-        const hash = hashPassword(senha);
-        await sql`
-          INSERT INTO usuarios (nome, email, senha_hash, role)
-          VALUES (${nome}, ${email}, ${hash}, 'admin')
-        `;
-        adminCriado = true;
-      }
+      const hash = hashPassword(senha);
+      await sql`
+        INSERT INTO usuarios (nome, email, senha_hash, role)
+        VALUES (${nome}, ${email}, ${hash}, 'admin')
+      `;
+      adminCriado = true;
     }
 
     res.status(200).json({
