@@ -1,0 +1,11 @@
+{
+  "name": "tintas-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@vercel/postgres": "^0.9.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cookie": "^0.6.0"
+  }
+}
