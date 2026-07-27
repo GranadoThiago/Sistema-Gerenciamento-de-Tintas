@@ -29,6 +29,12 @@ module.exports = async (req, res) => {
       );
     `;
 
+    // Colunas usadas para bloquear login após várias senhas erradas seguidas
+    // (proteção contra força bruta). ADD COLUMN IF NOT EXISTS não afeta
+    // tabelas/usuários que já existem.
+    await sql`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tentativas_falhas INTEGER NOT NULL DEFAULT 0;`;
+    await sql`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado_ate TIMESTAMPTZ;`;
+
     await sql`
       CREATE TABLE IF NOT EXISTS manipulacoes (
         id SERIAL PRIMARY KEY,
@@ -61,6 +67,10 @@ module.exports = async (req, res) => {
       });
     }
 
+    if (nome && email && senha && senha.length < 8) {
+      return res.status(400).json({ erro: 'A senha deve ter pelo menos 8 caracteres' });
+    }
+
     let adminCriado = false;
     if (nome && email && senha) {
       const hash = hashPassword(senha);
@@ -78,6 +88,6 @@ module.exports = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ erro: 'Erro ao configurar banco', detalhe: err.message });
+    res.status(500).json({ erro: 'Erro ao configurar banco' });
   }
 };
