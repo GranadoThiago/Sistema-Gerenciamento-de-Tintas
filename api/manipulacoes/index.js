@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
       return res.status(201).json(result.rows[0]);
     } catch (err) {
       console.error(err);
-      return res.status(500).json({ erro: 'Erro ao salvar manipulação', detalhe: err.message });
+      return res.status(500).json({ erro: 'Erro ao salvar manipulação' });
     }
   }
 
