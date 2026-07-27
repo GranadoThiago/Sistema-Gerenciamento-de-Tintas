@@ -224,18 +224,28 @@
             carregarTabela();
         }
 
+        // Escapa caracteres HTML perigosos antes de inserir dados do usuário na página.
+        // Sem isso, um cliente com nome tipo <img src=x onerror=...> executaria código
+        // no navegador de quem visse a tabela (XSS armazenado).
+        function escapeHtml(valor) {
+            const div = document.createElement('div');
+            div.textContent = valor ?? '';
+            return div.innerHTML;
+        }
+
         function criarLinhaTabela(manip) {
             const tbody = document.querySelector('#tabelaManipulacoes tbody');
             const tr = document.createElement('tr');
+            const id = Number(manip.id); // garante que é número antes de colocar inline
             tr.innerHTML = `
-                <td>${manip.cliente || ''}</td>
-                <td>${formatarDataBR(manip.dataManipulacao)}</td>
-                <td>${manip.nomeCor || '-'}</td>
-                <td>${manip.quantidade ?? ''}</td>
+                <td>${escapeHtml(manip.cliente)}</td>
+                <td>${escapeHtml(formatarDataBR(manip.dataManipulacao))}</td>
+                <td>${escapeHtml(manip.nomeCor) || '-'}</td>
+                <td>${escapeHtml(manip.quantidade)}</td>
                 <td>
-                    <button class="btn-secondary" onclick="mostrarDetalhes(${manip.id})">Detalhes</button>
-                    <button class="btn-secondary" onclick="editarManipulacao(${manip.id})">Editar</button>
-                    <button class="btn-danger" onclick="excluirManipulacao(${manip.id})">Excluir</button>
+                    <button class="btn-secondary" onclick="mostrarDetalhes(${id})">Detalhes</button>
+                    <button class="btn-secondary" onclick="editarManipulacao(${id})">Editar</button>
+                    <button class="btn-danger" onclick="excluirManipulacao(${id})">Excluir</button>
                 </td>
             `;
             tbody.appendChild(tr);

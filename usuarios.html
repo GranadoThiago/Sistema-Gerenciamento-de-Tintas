@@ -128,13 +128,24 @@
             document.getElementById('formTitulo').textContent = 'Novo Usuário';
         }
 
-        function editarUsuario(id, nome, email, role) {
-            document.getElementById('editandoId').value = id;
-            document.getElementById('nome').value = nome;
-            document.getElementById('email').value = email;
-            document.getElementById('role').value = role;
+        // Escapa caracteres HTML perigosos antes de inserir dados na página.
+        function escapeHtml(valor) {
+            const div = document.createElement('div');
+            div.textContent = valor ?? '';
+            return div.innerHTML;
+        }
+
+        let usuariosCache = {}; // guarda os dados por id, para o botão Editar usar sem reinserir no HTML
+
+        function editarUsuario(id) {
+            const u = usuariosCache[id];
+            if (!u) return;
+            document.getElementById('editandoId').value = u.id;
+            document.getElementById('nome').value = u.nome;
+            document.getElementById('email').value = u.email;
+            document.getElementById('role').value = u.role;
             document.getElementById('senha').value = '';
-            document.getElementById('formTitulo').textContent = `Editando: ${nome}`;
+            document.getElementById('formTitulo').textContent = `Editando: ${u.nome}`;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
@@ -157,22 +168,34 @@
             const resp = await fetch('/api/users');
             if (!resp.ok) return;
             const usuarios = await resp.json();
+            usuariosCache = {};
             const tbody = document.querySelector('#tabelaUsuarios tbody');
             tbody.innerHTML = '';
             usuarios.forEach(u => {
+                usuariosCache[u.id] = u;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${u.nome}</td>
-                    <td>${u.email}</td>
+                    <td>${escapeHtml(u.nome)}</td>
+                    <td>${escapeHtml(u.email)}</td>
                     <td>${u.role === 'admin' ? 'Administrador' : 'Usuário comum'}</td>
                     <td>
-                        <button class="btn-secondary" onclick='editarUsuario(${u.id}, ${JSON.stringify(u.nome)}, ${JSON.stringify(u.email)}, ${JSON.stringify(u.role)})'>Editar</button>
-                        <button class="btn-danger" onclick="excluirUsuario(${u.id})">Excluir</button>
+                        <button class="btn-secondary" data-acao="editar" data-id="${u.id}">Editar</button>
+                        <button class="btn-danger" data-acao="excluir" data-id="${u.id}">Excluir</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
+
+        // Delegação de evento: nenhum dado do usuário entra em atributos HTML,
+        // evitando quebra por aspas/apóstrofos e injeção de código.
+        document.querySelector('#tabelaUsuarios tbody').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-acao]');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            if (btn.dataset.acao === 'editar') editarUsuario(id);
+            if (btn.dataset.acao === 'excluir') excluirUsuario(id);
+        });
 
         verificarSessao();
     </script>
