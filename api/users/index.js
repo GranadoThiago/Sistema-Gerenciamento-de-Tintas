@@ -19,6 +19,9 @@ module.exports = async (req, res) => {
     if (!nome || !email || !senha) {
       return res.status(400).json({ erro: 'Nome, email e senha são obrigatórios' });
     }
+    if (senha.length < 8) {
+      return res.status(400).json({ erro: 'A senha deve ter pelo menos 8 caracteres' });
+    }
     try {
       const hash = hashPassword(senha);
       const result = await sql`

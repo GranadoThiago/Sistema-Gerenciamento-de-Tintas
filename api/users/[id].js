@@ -9,6 +9,9 @@ module.exports = async (req, res) => {
 
   if (req.method === 'PUT') {
     const { nome, role, senha } = req.body || {};
+    if (senha && senha.length < 8) {
+      return res.status(400).json({ erro: 'A senha deve ter pelo menos 8 caracteres' });
+    }
     try {
       if (senha) {
         const hash = hashPassword(senha);
@@ -38,8 +41,13 @@ module.exports = async (req, res) => {
     if (String(admin.id) === String(id)) {
       return res.status(400).json({ erro: 'Você não pode excluir sua própria conta' });
     }
-    await sql`DELETE FROM usuarios WHERE id = ${id}`;
-    return res.status(200).json({ ok: true });
+    try {
+      await sql`DELETE FROM usuarios WHERE id = ${id}`;
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ erro: 'Erro ao excluir usuário' });
+    }
   }
 
   res.status(405).json({ erro: 'Método não permitido' });
